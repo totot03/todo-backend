@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+# ─────────────────────────────────────────────
+# commit-msg (todo-backend)
+#
+# 프론트엔드는 commitlint(Node)를 쓰지만 백엔드는 Node 가 없으므로
+# 동일한 규칙을 정규식으로 검증한다.
+#   형식: <이모지(선택)> <타입>(<범위>): <한국어 설명>   ※ 72자 이내
+# ─────────────────────────────────────────────
+MSG_FILE=$1
+FIRST_LINE=$(head -n 1 "$MSG_FILE")
+
+# 병합/되돌리기/fixup 커밋은 Git 이 자동 생성하므로 검사에서 제외
+case "$FIRST_LINE" in
+  "Merge "*|"Revert "*|"fixup!"*|"squash!"*) exit 0 ;;
+esac
+
+TYPES='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+# 앞의 (이모지 + 공백)은 있어도 되고 없어도 된다
+PATTERN="^([^[:space:]]+ )?($TYPES)(\([a-z0-9/,_-]+\))?!?: .+"
+
+if ! printf '%s' "$FIRST_LINE" | grep -qE "$PATTERN"; then
+  echo "❌ 커밋 메시지 형식 오류"
+  echo "   입력: $FIRST_LINE"
+  echo ""
+  echo "   올바른 형식: <이모지(선택)> <타입>(<범위>): <설명>"
+  echo "   타입: $TYPES"
+  echo "   예시: ✨ feat(be): 할 일 목록 조회 API 추가"
+  echo "         fix(be): 만료된 JWT 재발급 시 500 응답 수정"
+  exit 1
+fi
+
+# 제목 길이 — 한글은 표시 폭이 넓어 72자로 제한한다
+LENGTH=$(printf '%s' "$FIRST_LINE" | wc -m | tr -d ' ')
+if [ "$LENGTH" -gt 72 ]; then
+  echo "❌ 커밋 메시지 제목이 너무 깁니다 (${LENGTH}자 > 72자)"
+  echo "   상세 내용은 빈 줄 다음의 본문에 작성하세요."
+  exit 1
+fi
+
+exit 0

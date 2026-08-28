@@ -1,0 +1,68 @@
+#!/usr/bin/env sh
+# ─────────────────────────────────────────────
+# pre-commit (todo-backend)
+#
+# 백엔드에는 Node 런타임이 없으므로 husky/lint-staged 대신
+# 순수 셸 스크립트 + Maven 플러그인으로 같은 역할을 구현한다.
+#   1) 시크릿 grep 스캔 (스테이징된 파일만)
+#   2) Spotless 포맷 검사 (java 파일이 포함된 커밋에서만 실행)
+# ─────────────────────────────────────────────
+
+# 초기 커밋 전에는 HEAD 가 없으므로 빈 트리를 기준으로 삼는다
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+  AGAINST=HEAD
+else
+  AGAINST=$(git hash-object -t tree /dev/null)
+fi
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR "$AGAINST")
+[ -z "$STAGED" ] && exit 0
+
+# ── 1) 시크릿 스캔 ────────────────────────────────────────────
+# 정규식 기반이라 만능은 아니다. "잘 알려진 형태의 키"와
+# "설정 파일에 하드코딩된 자격 증명"을 잡는 것이 목적이다.
+Q="\"'"  # 따옴표 문자 집합 (셸 인용 부호 충돌을 피하기 위해 변수로 분리)
+PATTERNS="(AKIA[0-9A-Z]{16})\
+|(-----BEGIN [A-Z ]*PRIVATE KEY-----)\
+|(ghp_[A-Za-z0-9]{20,})\
+|(xox[baprs]-[A-Za-z0-9-]{10,})\
+|(AIza[0-9A-Za-z_-]{35})\
+|(jdbc:[a-z]+://[^[:space:]${Q}]*:[^[:space:]@${Q}]+@)\
+|((password|passwd|secret|client-secret|api[-_]?key|access[-_]?token)[[:space:]]*[:=][[:space:]]*[${Q}]?[^[:space:]${Q}]{8,})"
+
+LEAK_FOUND=0
+for FILE in $STAGED; do
+  [ -f "$FILE" ] || continue
+  # 예시/플레이스홀더 값은 제외 (CHANGE_ME, ${ENV_VAR}, example 등)
+  MATCH=$(git show ":$FILE" 2>/dev/null \
+    | grep -nEi "$PATTERNS" \
+    | grep -viE 'CHANGE_ME|REPLACE_ME|your-|example|dummy|\$\{[A-Za-z_]+' )
+  if [ -n "$MATCH" ]; then
+    echo "🔑 $FILE"
+    echo "$MATCH" | sed 's/^/     /'
+    LEAK_FOUND=1
+  fi
+done
+
+if [ "$LEAK_FOUND" -eq 1 ]; then
+  echo ""
+  echo "❌ 커밋 중단: 자격 증명으로 보이는 값이 감지되었습니다."
+  echo "   application.yml 의 값은 \${DB_PASSWORD} 형태로 빼고 .env / 환경변수로 주입하세요."
+  echo "   오탐이라면 git commit --no-verify 로 우회할 수 있습니다."
+  exit 1
+fi
+
+# ── 2) Spotless 포맷 검사 ─────────────────────────────────────
+# java 파일이 하나도 없으면 JVM 을 띄우지 않는다 (커밋 속도 유지)
+if echo "$STAGED" | grep -qE '\.java$'; then
+  echo "▶ Spotless 포맷 검사"
+  if [ -x ./mvnw ]; then MVN=./mvnw; else MVN=mvn; fi
+  $MVN -q -o spotless:check 2>/dev/null || $MVN -q spotless:check || {
+    echo ""
+    echo "❌ 커밋 중단: Java 포맷 규칙 위반."
+    echo "   ./mvnw spotless:apply 로 자동 정리한 뒤 다시 add/commit 하세요."
+    exit 1
+  }
+fi
+
+exit 0

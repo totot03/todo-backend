@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# ─────────────────────────────────────────────
+# pre-push (todo-backend) — "원격 공유 직전" 방어선
+#
+# 커밋마다 돌리기엔 비싼 검사(컴파일 + 테스트)를 여기서 한 번에 수행한다.
+# validate 단계에 묶인 Spotless check 도 함께 실행된다.
+#   급하면 git push --no-verify 로 우회 가능(단, CI 에서 동일 검사가 다시 돈다).
+# ─────────────────────────────────────────────
+if [ -x ./mvnw ]; then MVN=./mvnw; else MVN=mvn; fi
+
+echo "▶ 빌드 + 테스트 (mvn verify)"
+$MVN -q verify || {
+  echo ""
+  echo "❌ push 중단: 빌드 또는 테스트 실패."
+  exit 1
+}
+
+echo "✅ push 전 검사 통과"
