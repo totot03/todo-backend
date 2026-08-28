@@ -1,0 +1,18 @@
+# 줄바꿈 정규화 — Windows 개발 환경에서도 저장소에는 항상 LF 로 저장한다.
+# (기존에는 mvnw 만 지정되어 있어 .yml/.java 가 CRLF 로 커밋될 수 있었다)
+* text=auto eol=lf
+
+# 실행 스크립트는 반드시 LF — CRLF 이면 sh 가 실행하지 못한다
+/mvnw          text eol=lf
+.githooks/*    text eol=lf
+*.sh           text eol=lf
+
+# Windows 전용 스크립트
+*.cmd          text eol=crlf
+*.bat          text eol=crlf
+
+# 바이너리
+*.jar          binary
+*.png          binary
+*.jpg          binary
+*.ico          binary
