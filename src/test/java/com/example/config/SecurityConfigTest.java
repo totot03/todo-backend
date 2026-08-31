@@ -1,5 +1,6 @@
 package com.example.config;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -45,5 +46,16 @@ class SecurityConfigTest {
                                 .header(HttpHeaders.ORIGIN, "http://evil.example.com")
                                 .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
                 .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
+    }
+
+    @Test
+    void googleOAuth2AuthorizationEndpointRedirectsToGoogleWithoutAuthentication()
+            throws Exception {
+        mockMvc.perform(get("/oauth2/authorization/google"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(
+                        header().string(
+                                        HttpHeaders.LOCATION,
+                                        containsString("accounts.google.com")));
     }
 }
