@@ -28,6 +28,14 @@ public class CustomUserDetails implements UserDetails {
         return user.getId();
     }
 
+    /**
+     * 컨트롤러에서 UserResponse.from(...)으로 변환할 때 쓴다 — JwtAuthenticationFilter가 이미 조회해둔 User를 재사용해 요청당 DB
+     * 조회를 늘리지 않는다.
+     */
+    public User getUser() {
+        return user;
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority("ROLE_USER"));
