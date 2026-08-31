@@ -3,25 +3,53 @@ package com.example.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
+
+import com.example.repository.UserRepository;
+import com.example.security.JwtAuthenticationEntryPoint;
+import com.example.security.JwtAuthenticationFilter;
+import com.example.security.JwtTokenProvider;
 
 /**
- * M0 최소 스코프 Security 설정.
+ * M2-A 인증 파이프라인 전체 설정. M0의 최소 골격(헬스체크만 permitAll)을 완전히 대체한다.
  *
- * <p>spring-boot-starter-security 의존성이 클래스패스에 있으면 별도 설정 없이도 모든 요청에 인증을 요구하는 기본 정책이 자동 적용된다. 지금은
- * 헬스체크만 열어두고, STATELESS 세션·JWT 인증 필터·OAuth2 경로·CSRF 비활성화 등 완전한 설정은 M2-A에서 이 클래스를 교체하며 추가한다.
+ * <p>세션을 쓰지 않는 STATELESS 정책과 JWT 쿠키 필터를 조합한다. 서버가 세션 상태를 들고 있지 않아 CSRF 토큰 검증이 의미가 없으므로 CSRF는
+ * 비활성화한다(REST API 표준 패턴). OAuth2 로그인(M2-B)은 이번 설정에 포함하지 않는다.
  */
 @Configuration
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http.authorizeHttpRequests(
-                auth ->
-                        auth.requestMatchers("/api/health")
-                                .permitAll()
-                                .anyRequest()
-                                .authenticated());
+    public SecurityFilterChain filterChain(
+            HttpSecurity http,
+            CorsConfigurationSource corsConfigurationSource,
+            JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
+            JwtTokenProvider jwtTokenProvider,
+            UserRepository userRepository)
+            throws Exception {
+        http.csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(
+                        exception ->
+                                exception.authenticationEntryPoint(jwtAuthenticationEntryPoint))
+                .authorizeHttpRequests(
+                        auth ->
+                                auth.requestMatchers(
+                                                "/api/health",
+                                                "/api/auth/signup",
+                                                "/api/auth/login")
+                                        .permitAll()
+                                        .anyRequest()
+                                        .authenticated())
+                .addFilterBefore(
+                        new JwtAuthenticationFilter(jwtTokenProvider, userRepository),
+                        UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }
