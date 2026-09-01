@@ -5,6 +5,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -50,6 +51,21 @@ public class GlobalExceptionHandler {
                         ApiResponse.error(
                                 new ErrorResponse(
                                         errorCode.getCode(), errorCode.getMessage(), fieldErrors)));
+    }
+
+    /**
+     * 요청 바디 JSON 파싱 실패(예: {@code priority}에 존재하지 않는 값 전달)를 처리한다. 새 ErrorCode를 만들지 않고 기존
+     * VALIDATION_FAILED를 재사용한다 — Bean Validation 실패와 달리 어떤 필드가 문제인지 특정하기 어려워 fieldErrors는 null로 둔다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMessageNotReadableException(
+            HttpMessageNotReadableException e) {
+        ErrorCode errorCode = ErrorCode.VALIDATION_FAILED;
+        return ResponseEntity.status(errorCode.getStatus())
+                .body(
+                        ApiResponse.error(
+                                new ErrorResponse(
+                                        errorCode.getCode(), errorCode.getMessage(), null)));
     }
 
     @ExceptionHandler(Exception.class)
