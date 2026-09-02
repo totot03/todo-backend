@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import jakarta.servlet.http.Cookie;
 
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -28,11 +31,13 @@ import tools.jackson.databind.ObjectMapper;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class TodoControllerTest {
 
     private static final String COOKIE_NAME = "access_token";
 
     @Autowired private MockMvc mockMvc;
+    @PersistenceContext private EntityManager entityManager;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
@@ -63,19 +68,22 @@ class TodoControllerTest {
                         .andReturn();
         Long id = extractId(createResult);
 
-        // priority 생략 시 기본값 MEDIUM.
-        mockMvc.perform(
-                        post("/api/todos")
-                                .cookie(ownerCookie)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        """
-                                        {"title":"기본 우선순위 확인용"}
-                                        """))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.priority").value("MEDIUM"));
+        // priority 생략 시 기본값 MEDIUM. 이 두 번째 Todo가 정렬(createdAt DESC) 검증에도 쓰인다.
+        MvcResult secondCreateResult =
+                mockMvc.perform(
+                                post("/api/todos")
+                                        .cookie(ownerCookie)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(
+                                                """
+                                                {"title":"기본 우선순위 확인용"}
+                                                """))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.data.priority").value("MEDIUM"))
+                        .andReturn();
+        Long secondId = extractId(secondCreateResult);
 
-        // 2) 목록 — 페이지네이션 필드 확인.
+        // 2) 목록 — 페이지네이션 필드(totalPages 포함) + 정렬(createdAt DESC, 최신순) 확인.
         mockMvc.perform(
                         get("/api/todos")
                                 .cookie(ownerCookie)
@@ -85,7 +93,9 @@ class TodoControllerTest {
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.size").value(10))
                 .andExpect(jsonPath("$.data.totalElements").isNumber())
-                .andExpect(jsonPath("$.data.first").value(true));
+                .andExpect(jsonPath("$.data.totalPages").isNumber())
+                .andExpect(jsonPath("$.data.first").value(true))
+                .andExpect(jsonPath("$.data.content[0].id").value(secondId));
 
         // completed 필터 — 아직 미완료이므로 completed=false에는 포함, completed=true에는 없어야 한다.
         mockMvc.perform(get("/api/todos").cookie(ownerCookie).param("completed", "false"))
@@ -156,6 +166,15 @@ class TodoControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").doesNotExist());
+
+        // deleted_at은 API 응답에 노출되지 않고 @SQLRestriction 때문에 일반 조회로도 확인할 수 없으므로,
+        // 네이티브 쿼리로 실제 컬럼 값이 채워졌는지(물리 삭제가 아님을) 직접 확인한다.
+        Object deletedAt =
+                entityManager
+                        .createNativeQuery("SELECT deleted_at FROM todos WHERE id = :id")
+                        .setParameter("id", id)
+                        .getSingleResult();
+        assertNotNull(deletedAt);
 
         // 8) 삭제 후에는 소유자 본인도 404, 목록에서도 제외된다.
         mockMvc.perform(get("/api/todos/" + id).cookie(ownerCookie))
