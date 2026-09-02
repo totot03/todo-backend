@@ -14,6 +14,23 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # 통합 테스트(@ActiveProfiles("test"))가 실제 PostgreSQL에 접속하므로 서비스 컨테이너로 띄운다.
+    # GitHub-hosted 러너는 잡이 컨테이너가 아니라 VM에서 직접 실행되므로, 포트 매핑만으로
+    # application-test.properties의 localhost:5432 접속 정보를 그대로 쓸 수 있다.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -23,5 +40,11 @@ jobs:
           java-version: "21"
           cache: maven
 
+      # todolist_test_db는 Hibernate가 만들지 못하는 "스키마 네임스페이스"라 미리 만들어야 한다.
+      - name: 테스트 스키마 생성 (todolist_test_db)
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -c "CREATE SCHEMA IF NOT EXISTS todolist_test_db;"
+
       - name: 빌드 + 포맷 검사 + 테스트
         run: ./mvnw --batch-mode verify
+        env:
+          DB_PASSWORD: postgres
