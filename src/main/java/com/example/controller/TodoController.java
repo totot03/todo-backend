@@ -43,16 +43,17 @@ public class TodoController {
         this.todoService = todoService;
     }
 
-    @Operation(summary = "할 일 목록 조회 (페이지네이션 · 완료 필터 · 키워드 검색)")
+    @Operation(summary = "할 일 목록 조회 (페이지네이션 · 완료 필터 · 키워드 검색 · 정렬)")
     @GetMapping
     public ApiResponse<PageResponse<TodoResponse>> list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) Boolean completed,
             @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         return ApiResponse.success(
-                todoService.list(userDetails.getUserId(), page, size, completed, keyword));
+                todoService.list(userDetails.getUserId(), page, size, completed, keyword, sort));
     }
 
     @Operation(summary = "할 일 생성")

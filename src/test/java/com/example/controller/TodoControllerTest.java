@@ -97,6 +97,16 @@ class TodoControllerTest {
                 .andExpect(jsonPath("$.data.first").value(true))
                 .andExpect(jsonPath("$.data.content[0].id").value(secondId));
 
+        // 정렬 방향 — sort=createdAt,asc 지정 시 오래된순으로 뒤집힌다(FR-T06).
+        mockMvc.perform(get("/api/todos").cookie(ownerCookie).param("sort", "createdAt,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].id").value(id));
+
+        // 허용되지 않은 sort 값(다른 필드·잘못된 형식)은 기본 정렬(createdAt,desc)로 대체된다.
+        mockMvc.perform(get("/api/todos").cookie(ownerCookie).param("sort", "title,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].id").value(secondId));
+
         // completed 필터 — 아직 미완료이므로 completed=false에는 포함, completed=true에는 없어야 한다.
         mockMvc.perform(get("/api/todos").cookie(ownerCookie).param("completed", "false"))
                 .andExpect(status().isOk())

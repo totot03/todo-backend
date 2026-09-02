@@ -40,15 +40,22 @@ public class TodoService {
     }
 
     /**
-     * 정렬은 항상 최신순으로 고정한다 — {@code Pageable}을 컨트롤러에서 직접 받지 않는 이유이기도 하다(정렬 파라미터 미노출).
+     * 정렬 필드는 {@code createdAt} 하나로 고정한다 — 임의 필드 정렬을 허용하면 인덱스 없는 컬럼에 대한 정렬 요청으로 성능 저하나 오류를 유발할 수 있어,
+     * {@link #resolveSort}에서 화이트리스트로 방향(asc/desc)만 받는다.
+     */
+    private static final Sort DEFAULT_SORT = Sort.by(Sort.Direction.DESC, "createdAt");
+
+    /**
+     * 정렬 필드는 {@code createdAt}으로 고정하고 방향(최신순/오래된순)만 {@code sort} 파라미터로 받는다 — {@code Pageable}을
+     * 컨트롤러에서 직접 받지 않고 문자열로 받아 여기서 화이트리스트 검증하는 이유다(FR-T06).
      *
      * <p>{@code completed}/{@code keyword}가 없을 때 리포지토리에 null을 그대로 넘기지 않고 "필터 적용 여부" boolean과 "값"을
      * 분리해서 넘긴다 — {@link TodoRepository#search}의 Javadoc 참고(PostgreSQL의 null 파라미터 타입 추론 문제 회피).
      */
     @Transactional(readOnly = true)
     public PageResponse<TodoResponse> list(
-            Long userId, int page, int size, Boolean completed, String keyword) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+            Long userId, int page, int size, Boolean completed, String keyword, String sort) {
+        Pageable pageable = PageRequest.of(page, size, resolveSort(sort));
         String normalizedKeyword = StringUtils.hasText(keyword) ? keyword : null;
         Page<Todo> result =
                 todoRepository.search(
@@ -59,6 +66,19 @@ public class TodoService {
                         normalizedKeyword != null ? normalizedKeyword : "",
                         pageable);
         return PageResponse.from(result, TodoResponse::from);
+    }
+
+    /** {@code "createdAt,asc"}만 오름차순으로 인정하고, 그 외(필드명이 다르거나 형식이 잘못된 값 포함)는 전부 기본 정렬로 대체한다. */
+    private Sort resolveSort(String sort) {
+        if (!StringUtils.hasText(sort)) {
+            return DEFAULT_SORT;
+        }
+        String[] parts = sort.split(",", 2);
+        boolean isCreatedAtAsc =
+                parts.length == 2
+                        && "createdAt".equals(parts[0].trim())
+                        && "asc".equalsIgnoreCase(parts[1].trim());
+        return isCreatedAtAsc ? Sort.by(Sort.Direction.ASC, "createdAt") : DEFAULT_SORT;
     }
 
     /**

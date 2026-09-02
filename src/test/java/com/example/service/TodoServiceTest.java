@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import com.example.common.exception.BusinessException;
 import com.example.common.exception.ErrorCode;
@@ -145,10 +147,37 @@ class TodoServiceTest {
                         eq(1L), eq(false), eq(false), eq(false), eq(""), any(Pageable.class)))
                 .thenReturn(new PageImpl<Todo>(List.of()));
 
-        PageResponse<TodoResponse> response = todoService.list(1L, 0, 10, null, "   ");
+        PageResponse<TodoResponse> response = todoService.list(1L, 0, 10, null, "   ", null);
 
         assertTrue(response.content().isEmpty());
         verify(todoRepository)
                 .search(eq(1L), eq(false), eq(false), eq(false), eq(""), any(Pageable.class));
+    }
+
+    /**
+     * FR-T06 — 정렬 필드는 {@code createdAt} 하나로 고정하고 방향만 화이트리스트로 받는다. DB 없이도(TodoServiceTest는 Mockito
+     * 목이라 통합 테스트와 달리 DB_PASSWORD 없이 실행된다) {@code resolveSort}의 분기를 전부 검증한다.
+     */
+    @Test
+    void listResolvesSortWhitelistAndFallsBackToDefaultOtherwise() {
+        when(todoRepository.search(
+                        eq(1L), eq(false), eq(false), eq(false), eq(""), any(Pageable.class)))
+                .thenReturn(new PageImpl<Todo>(List.of()));
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+
+        todoService.list(1L, 0, 10, null, null, "createdAt,asc");
+        todoService.list(1L, 0, 10, null, null, "createdAt,desc");
+        todoService.list(1L, 0, 10, null, null, "title,asc"); // 허용되지 않은 필드
+        todoService.list(1L, 0, 10, null, null, "createdAt,ASC"); // 대소문자 무시
+        todoService.list(1L, 0, 10, null, null, null); // 미지정 시 기본값
+
+        verify(todoRepository, times(5))
+                .search(eq(1L), eq(false), eq(false), eq(false), eq(""), captor.capture());
+        List<Pageable> pageables = captor.getAllValues();
+        assertEquals(Sort.by(Sort.Direction.ASC, "createdAt"), pageables.get(0).getSort());
+        assertEquals(Sort.by(Sort.Direction.DESC, "createdAt"), pageables.get(1).getSort());
+        assertEquals(Sort.by(Sort.Direction.DESC, "createdAt"), pageables.get(2).getSort());
+        assertEquals(Sort.by(Sort.Direction.ASC, "createdAt"), pageables.get(3).getSort());
+        assertEquals(Sort.by(Sort.Direction.DESC, "createdAt"), pageables.get(4).getSort());
     }
 }
