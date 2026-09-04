@@ -34,9 +34,12 @@ LEAK_FOUND=0
 for FILE in $STAGED; do
   [ -f "$FILE" ] || continue
   # 예시/플레이스홀더 값은 제외 (CHANGE_ME, ${ENV_VAR}, example 등)
+  # test-only- / test-google- 는 application-test.properties 의 테스트 전용 더미 값이다.
+  # 이 스캔은 diff 가 아니라 스테이징된 파일 전문을 보므로, 제외하지 않으면 해당 파일을
+  # 건드리는 모든 커밋이 같은 오탐으로 막힌다 (운영 자산이 아니므로 RISK-3 과 무관).
   MATCH=$(git show ":$FILE" 2>/dev/null \
     | grep -nEi "$PATTERNS" \
-    | grep -viE 'CHANGE_ME|REPLACE_ME|your-|example|dummy|\$\{[A-Za-z_]+' )
+    | grep -viE 'CHANGE_ME|REPLACE_ME|your-|example|dummy|test-only-|test-google-|\$\{[A-Za-z_]+' )
   if [ -n "$MATCH" ]; then
     echo "🔑 $FILE"
     echo "$MATCH" | sed 's/^/     /'
