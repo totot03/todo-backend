@@ -9,6 +9,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.example.common.response.ApiResponse;
 import com.example.common.response.ErrorResponse;
@@ -61,6 +62,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleMessageNotReadableException(
             HttpMessageNotReadableException e) {
         ErrorCode errorCode = ErrorCode.VALIDATION_FAILED;
+        return ResponseEntity.status(errorCode.getStatus())
+                .body(
+                        ApiResponse.error(
+                                new ErrorResponse(
+                                        errorCode.getCode(), errorCode.getMessage(), null)));
+    }
+
+    /**
+     * multipart 요청이 {@code spring.servlet.multipart.max-file-size}를 넘겼을 때를 처리한다. 컨테이너가 우리 검증보다 먼저
+     * 요청을 끊는 경로이므로, 이 경우에도 AttachmentService가 5MB 초과에 사용하는 것과 같은 FILE_TOO_LARGE 봉투로 응답해야 클라이언트가 두
+     * 경로를 구분하지 않고 하나의 메시지로 다룰 수 있다.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceededException(
+            MaxUploadSizeExceededException e) {
+        ErrorCode errorCode = ErrorCode.FILE_TOO_LARGE;
         return ResponseEntity.status(errorCode.getStatus())
                 .body(
                         ApiResponse.error(
