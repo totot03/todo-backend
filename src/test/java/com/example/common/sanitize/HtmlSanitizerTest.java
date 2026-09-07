@@ -52,4 +52,42 @@ class HtmlSanitizerTest {
     void returnsNullForNullInput() {
         assertNull(sanitizer.sanitize(null));
     }
+
+    @Test
+    void removesImgWithExternalUrlSrc() {
+        String result = sanitizer.sanitize("<img src=\"https://evil.example.com/tracker.png\">");
+
+        assertFalse(result.contains("<img"));
+    }
+
+    @Test
+    void removesImgWithJavascriptUrlSrc() {
+        String result = sanitizer.sanitize("<img src=\"javascript:alert(1)\">");
+
+        assertFalse(result.contains("<img"));
+        assertFalse(result.contains("javascript:"));
+    }
+
+    @Test
+    void removesImgWithDataUriSrc() {
+        // addProtocols를 걸지 않았으므로 jsoup 자체는 data: URI를 막지 않는다. 사후 정규식 검증이 이 케이스를 잡아야 한다.
+        String result =
+                sanitizer.sanitize(
+                        "<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB\">");
+
+        assertFalse(result.contains("<img"));
+        assertFalse(result.contains("data:"));
+    }
+
+    @Test
+    void keepsImgWithValidFileApiSrc() {
+        // 상대경로라 프로토콜이 없다는 이유로 잘려나가면 안 된다 — addProtocols를 걸지 않은 이유를 고정하는 회귀 테스트다.
+        String html =
+                "<p>사진</p><img src=\"/api/files/3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6789\" alt=\"사진\">";
+
+        String result = sanitizer.sanitize(html);
+
+        assertTrue(result.contains("<img"));
+        assertTrue(result.contains("src=\"/api/files/3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6789\""));
+    }
 }
