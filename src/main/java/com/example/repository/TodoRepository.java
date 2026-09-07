@@ -47,4 +47,16 @@ public interface TodoRepository extends JpaRepository<Todo, Long> {
             @Param("hasKeywordFilter") boolean hasKeywordFilter,
             @Param("keywordValue") String keywordValue,
             Pageable pageable);
+
+    /**
+     * 고아 파일 정리 스케줄러가 삭제 직전에 거치는 가드다 ({@code AttachmentCleanupService}). 이 결과가 0이어야 실제로 지운다.
+     *
+     * <p>{@code deleted_at} 조건을 따로 쓰지 않아도 되는 이유는 {@link Todo}의 {@code @SQLRestriction}이 이 쿼리에도 자동
+     * 적용되기 때문이다 — 즉 이 카운트는 이미 "소프트 삭제되지 않은(활성) Todo 중에서"라는 의미다. 소프트 삭제된 Todo가 본문에 같은 uuid를 갖고
+     * 있어도(복구 가능성이 있어 첨부 자체는 남겨 둬야 하지만) 이 카운트에는 잡히지 않는다는 뜻이므로, 정리 대상 선정에서 {@code todo_id IS NULL}(작성
+     * 중 업로드) 후보만 다루는 것과 결합해야 의미가 맞는다 — 소프트 삭제된 Todo에 여전히 링크된 첨부는 {@code todo_id}가 non-null이라 애초에 정리
+     * 후보에 오르지 않는다.
+     */
+    @Query("SELECT COUNT(t) FROM Todo t WHERE t.description LIKE CONCAT('%', :uuid, '%')")
+    long countActiveReferencing(@Param("uuid") String uuid);
 }
