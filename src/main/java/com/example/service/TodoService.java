@@ -33,10 +33,15 @@ public class TodoService {
 
     private final TodoRepository todoRepository;
     private final HtmlSanitizer htmlSanitizer;
+    private final AttachmentService attachmentService;
 
-    public TodoService(TodoRepository todoRepository, HtmlSanitizer htmlSanitizer) {
+    public TodoService(
+            TodoRepository todoRepository,
+            HtmlSanitizer htmlSanitizer,
+            AttachmentService attachmentService) {
         this.todoRepository = todoRepository;
         this.htmlSanitizer = htmlSanitizer;
+        this.attachmentService = attachmentService;
     }
 
     /**
@@ -88,15 +93,18 @@ public class TodoService {
     @Transactional
     public TodoResponse create(User user, TodoCreateRequest request) {
         Priority priority = request.priority() != null ? request.priority() : Priority.MEDIUM;
+        String description = htmlSanitizer.sanitize(request.description());
         Todo todo =
                 Todo.builder()
                         .user(user)
                         .title(request.title())
-                        .description(htmlSanitizer.sanitize(request.description()))
+                        .description(description)
                         .dueDate(request.dueDate())
                         .priority(priority)
                         .build();
         todoRepository.save(todo);
+        // 저장 직후(= id가 확정된 뒤)에 동기화해야 첨부의 todo_id가 실제 FK 값을 가리킬 수 있다.
+        attachmentService.syncLinks(todo, description, user.getId());
         return TodoResponse.from(todo);
     }
 
@@ -120,6 +128,9 @@ public class TodoService {
 
         // 영속 상태 엔티티이므로 트랜잭션 커밋 시점에 변경 감지(dirty checking)로 UPDATE가 나간다. save() 재호출 불필요.
         todo.update(title, description, dueDate, priority);
+        // description이 이번 요청에서 바뀌지 않았어도 항상 동기화한다 — 링크 상태를 매번 본문 기준으로 다시 맞추는 편이
+        // "바뀐 경우에만 동기화"보다 단순하고, 과거에 어떤 이유로든 어긋난 링크가 있었다면 여기서 스스로 복구된다.
+        attachmentService.syncLinks(todo, description, userId);
         return TodoResponse.from(todo);
     }
 
@@ -130,7 +141,11 @@ public class TodoService {
         return TodoResponse.from(todo);
     }
 
-    /** 물리 삭제 금지, {@code deleted_at} 기록(Soft Delete). */
+    /**
+     * 물리 삭제 금지, {@code deleted_at} 기록(Soft Delete).
+     *
+     * <p>첨부 링크는 건드리지 않는다. Todo도 Soft Delete라 복구될 수 있는데, 복구 시점에 본문 속 이미지가 이미 링크 해제돼 있으면 안 되기 때문이다.
+     */
     @Transactional
     public void delete(Long id, Long userId) {
         Todo todo = findOwned(id, userId);

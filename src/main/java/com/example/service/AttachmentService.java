@@ -1,8 +1,15 @@
 package com.example.service;
 
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
 
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,8 +18,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.example.common.exception.BusinessException;
 import com.example.common.exception.ErrorCode;
+import com.example.common.sanitize.HtmlSanitizer;
 import com.example.dto.file.ImageUploadResponse;
 import com.example.entity.Attachment;
+import com.example.entity.Todo;
 import com.example.entity.User;
 import com.example.repository.AttachmentRepository;
 import com.example.service.storage.FileStorageService;
@@ -91,6 +100,58 @@ public class AttachmentService {
         return attachmentRepository
                 .findByUuidAndUserId(uuid, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
+    }
+
+    /**
+     * 저장된 {@code todo}의 본문과 첨부 링크 상태를 맞춘다. {@code TodoService.create}/{@code update} 양쪽이 이 메서드 하나로
+     * 모여야 두 경로가 갈라지지 않는다.
+     *
+     * <p>반드시 <b>sanitize를 마친 뒤의 HTML</b>을 넘겨야 한다 — sanitize 과정에서 제거될 {@code img}(외부 URL, {@code
+     * javascript:} 등)까지 링크해 버리면 안 되기 때문이다.
+     *
+     * <p>{@code userId} 조건 없이 uuid만으로 첨부를 찾으면, 사용자 A가 본문에 남의 uuid를 적어 넣는 것만으로 B의 첨부 레코드를 자기 Todo에
+     * 연결해 버릴 수 있다({@link AttachmentRepository#findByUserIdAndUuidIn}이 이 조건을 강제한다).
+     *
+     * <p>본문에서 빠진 이미지는 {@code todo_id}를 null로 되돌릴 뿐 물리 삭제하지 않는다 — 다시 본문에 넣으면 그대로 되살아나야 하고, 완전한 삭제
+     * 여부는 고아 정리 스케줄러가 별도로 판단한다.
+     */
+    @Transactional
+    public void syncLinks(Todo todo, String sanitizedHtml, Long userId) {
+        Set<UUID> referencedUuids = extractReferencedUuids(sanitizedHtml);
+
+        for (Attachment linked : attachmentRepository.findByTodoId(todo.getId())) {
+            if (!referencedUuids.contains(linked.getUuid())) {
+                linked.unlink();
+            }
+        }
+
+        if (!referencedUuids.isEmpty()) {
+            List<Attachment> toLink =
+                    attachmentRepository.findByUserIdAndUuidIn(userId, referencedUuids);
+            for (Attachment attachment : toLink) {
+                attachment.linkTo(todo);
+            }
+        }
+    }
+
+    /**
+     * sanitize를 마친 본문에서 {@code img[src]}가 가리키는 첨부 uuid만 모은다. {@link
+     * HtmlSanitizer#IMAGE_SRC_PATTERN}을 그대로 재사용해, "sanitizer가 살려 둔 img"와 "syncLinks가 참조로 인정하는 img"의
+     * 판정 기준이 어긋나지 않게 한다.
+     */
+    private Set<UUID> extractReferencedUuids(String sanitizedHtml) {
+        if (!StringUtils.hasText(sanitizedHtml)) {
+            return Set.of();
+        }
+        Elements images = Jsoup.parseBodyFragment(sanitizedHtml).body().select("img");
+        Set<UUID> uuids = new HashSet<>();
+        for (Element img : images) {
+            Matcher matcher = HtmlSanitizer.IMAGE_SRC_PATTERN.matcher(img.attr("src"));
+            if (matcher.matches()) {
+                uuids.add(UUID.fromString(matcher.group(1)));
+            }
+        }
+        return uuids;
     }
 
     /** 저장 경로. 사용자별·연월별로 나누는 이유는 한 디렉터리에 파일이 무한정 쌓이면 파일시스템 조회가 느려지고 백업·정리 단위를 잡기 어려워지기 때문이다. */

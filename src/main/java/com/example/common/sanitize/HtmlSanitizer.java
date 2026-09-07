@@ -46,10 +46,16 @@ public class HtmlSanitizer {
                             "img")
                     .addAttributes("img", "src", "alt", "width");
 
-    /** 첨부 파일 조회 API 경로만 허용한다. UUID 형식까지 고정해 다른 상대경로가 끼어들 여지를 없앤다. */
-    private static final Pattern IMAGE_SRC_PATTERN =
+    /**
+     * 첨부 파일 조회 API 경로만 허용한다. UUID 형식까지 고정해 다른 상대경로가 끼어들 여지를 없앤다.
+     *
+     * <p>{@code public}인 이유는 {@code AttachmentService.syncLinks}가 sanitize를 마친 본문에서 어떤 {@code src}를
+     * "참조 중인 첨부"로 볼지 판단할 때 같은 정규식을 그대로 쓰기 때문이다. 두 곳이 각자 비슷한 정규식을 따로 유지하면 언젠가 miss-align 될 수 있어, 정의를
+     * 한 곳으로 모았다. UUID 부분을 캡처 그룹으로 잡아 {@code syncLinks}가 문자열 자르기 없이 바로 추출할 수 있게 한다.
+     */
+    public static final Pattern IMAGE_SRC_PATTERN =
             Pattern.compile(
-                    "^/api/files/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+                    "^/api/files/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$");
 
     /** 허용 태그 화이트리스트로 정제한다. {@code null}은 그대로 {@code null}을 반환한다(description은 선택 필드). */
     public String sanitize(String rawHtml) {

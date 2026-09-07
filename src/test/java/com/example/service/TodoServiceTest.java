@@ -38,7 +38,9 @@ class TodoServiceTest {
 
     private final TodoRepository todoRepository = mock(TodoRepository.class);
     private final HtmlSanitizer htmlSanitizer = new HtmlSanitizer();
-    private final TodoService todoService = new TodoService(todoRepository, htmlSanitizer);
+    private final AttachmentService attachmentService = mock(AttachmentService.class);
+    private final TodoService todoService =
+            new TodoService(todoRepository, htmlSanitizer, attachmentService);
     private final User owner = User.builder().id(1L).build();
 
     @Test

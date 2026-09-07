@@ -2,16 +2,21 @@ package com.example.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -24,6 +29,7 @@ import com.example.common.exception.ErrorCode;
 import com.example.dto.file.ImageUploadResponse;
 import com.example.entity.Attachment;
 import com.example.entity.StorageType;
+import com.example.entity.Todo;
 import com.example.entity.User;
 import com.example.repository.AttachmentRepository;
 import com.example.service.storage.FileStorageService;
@@ -132,6 +138,75 @@ class AttachmentServiceTest {
                 assertThrows(BusinessException.class, () -> attachmentService.findOwned(uuid, 7L));
 
         assertEquals(ErrorCode.FILE_NOT_FOUND, e.getErrorCode());
+    }
+
+    @Test
+    void syncLinksAttachesImageReferencedInSanitizedBody() {
+        Todo todo = Todo.builder().id(100L).build();
+        UUID uuid = UUID.randomUUID();
+        Attachment attachment = Attachment.builder().uuid(uuid).build();
+        when(attachmentRepository.findByTodoId(100L)).thenReturn(List.of());
+        when(attachmentRepository.findByUserIdAndUuidIn(eq(7L), anyCollection()))
+                .thenReturn(List.of(attachment));
+
+        attachmentService.syncLinks(todo, "<p><img src=\"/api/files/" + uuid + "\"></p>", 7L);
+
+        assertEquals(todo, attachment.getTodo());
+    }
+
+    @Test
+    void syncLinksUnlinksAttachmentNoLongerReferenced() {
+        Todo todo = Todo.builder().id(100L).build();
+        Attachment stillLinked = Attachment.builder().uuid(UUID.randomUUID()).todo(todo).build();
+        when(attachmentRepository.findByTodoId(100L)).thenReturn(List.of(stillLinked));
+
+        // 본문에 img가 하나도 없다 — 기존에 링크돼 있던 첨부는 전부 떨어져 나가야 한다.
+        attachmentService.syncLinks(todo, "<p>이미지를 뺐습니다</p>", 7L);
+
+        assertNull(stillLinked.getTodo());
+        // 참조가 없으므로 링크 대상 조회 자체를 하지 않는다.
+        verify(attachmentRepository, never()).findByUserIdAndUuidIn(anyLong(), anyCollection());
+    }
+
+    @Test
+    void syncLinksKeepsStillReferencedAttachmentLinked() {
+        Todo todo = Todo.builder().id(100L).build();
+        UUID uuid = UUID.randomUUID();
+        Attachment attachment = Attachment.builder().uuid(uuid).todo(todo).build();
+        when(attachmentRepository.findByTodoId(100L)).thenReturn(List.of(attachment));
+        when(attachmentRepository.findByUserIdAndUuidIn(eq(7L), anyCollection()))
+                .thenReturn(List.of(attachment));
+
+        attachmentService.syncLinks(todo, "<img src=\"/api/files/" + uuid + "\">", 7L);
+
+        assertEquals(todo, attachment.getTodo());
+    }
+
+    @Test
+    void syncLinksAlwaysScopesLinkLookupToOwner() {
+        // 본문에 남의 uuid를 적어 넣더라도, 링크 대상 조회 자체가 userId로 스코프돼 있어(리포지토리 쿼리 조건) 다른 사용자의
+        // 첨부를 가져올 수 없다. 서비스가 그 userId 인자를 실제로 넘기는지를 고정한다.
+        Todo todo = Todo.builder().id(100L).build();
+        UUID othersUuid = UUID.randomUUID();
+        when(attachmentRepository.findByTodoId(100L)).thenReturn(List.of());
+        when(attachmentRepository.findByUserIdAndUuidIn(anyLong(), anyCollection()))
+                .thenReturn(List.of());
+
+        attachmentService.syncLinks(todo, "<img src=\"/api/files/" + othersUuid + "\">", 7L);
+
+        verify(attachmentRepository).findByUserIdAndUuidIn(eq(7L), anyCollection());
+    }
+
+    @Test
+    void syncLinksWithBlankBodyUnlinksWithoutQueryingLinkTargets() {
+        Todo todo = Todo.builder().id(100L).build();
+        Attachment linked = Attachment.builder().uuid(UUID.randomUUID()).todo(todo).build();
+        when(attachmentRepository.findByTodoId(100L)).thenReturn(List.of(linked));
+
+        attachmentService.syncLinks(todo, null, 7L);
+
+        assertNull(linked.getTodo());
+        verify(attachmentRepository, never()).findByUserIdAndUuidIn(anyLong(), anyCollection());
     }
 
     /** store는 넘겨받은 키를 그대로 담아 돌려주고, save는 넘겨받은 엔티티를 그대로 돌려준다. */
