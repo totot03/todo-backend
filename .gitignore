@@ -4,15 +4,24 @@ target/
 ### 시크릿 / 로컬 설정 — 절대 커밋 금지 ###
 .env
 .env.*
-!.env.example
+*.env
+!*.env.example
 application-local.yml
 application-local.yaml
 application-local.properties
+# application-prod.properties는 ${ENV_VAR} 참조만 쓰지만, .claude/settings.json도 이 파일의
+# 읽기를 차단해 둔 만큼 방어적으로 커밋 대상에서 제외한다(운영 배포자가 로컬에만 둔다).
+application-prod.properties
 application-secret.*
 *.pem
 *.key
 *.p12
 *.jks
+
+### IDE 워크스페이스 / 로컬 업로드 ###
+.metadata/
+uploads/
+uploads-test/
 
 ### 로그 ###
 *.log

@@ -25,7 +25,8 @@ class OAuth2SuccessHandlerTest {
     private static final String SUCCESS_REDIRECT_URI = "http://localhost:3000/oauth2/callback";
 
     private final JwtTokenProvider jwtTokenProvider = mock(JwtTokenProvider.class);
-    private final AccessTokenCookieWriter accessTokenCookieWriter = new AccessTokenCookieWriter();
+    private final AccessTokenCookieWriter accessTokenCookieWriter =
+            new AccessTokenCookieWriter(false, "Lax");
     private final OAuth2SuccessHandler oAuth2SuccessHandler =
             new OAuth2SuccessHandler(
                     jwtTokenProvider, accessTokenCookieWriter, SUCCESS_REDIRECT_URI);

@@ -1,0 +1,46 @@
+# /etc/systemd/system/todolist.service — todo-backend systemd 유닛.
+#
+# install.sh가 이 파일을 그대로 복사해 설치한다. 수동으로 EC2에서 직접 편집하지 말고
+# 이 파일을 고친 뒤 install.sh(또는 재설치)로 반영한다.
+
+[Unit]
+Description=Todo Backend (Spring Boot) - todolist
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/etc/todolist
+
+# JVM 런타임 옵션(비밀값 없음, todolist.conf)과 실제 비밀값/설정(todolist.env)을 둘 다
+# 로드한다. 하나라도 없으면 서비스 기동 자체가 실패한다 — 설정 누락을 조용히 넘기지
+# 않기 위한 의도적인 설계다.
+EnvironmentFile=/etc/todolist/todolist.conf
+EnvironmentFile=/etc/todolist/todolist.env
+
+# JAVA_OPTS처럼 공백으로 구분된 여러 옵션의 단어 분리를 bash에 명시적으로 위임한다.
+# exec로 bash 프로세스를 java로 치환해야 systemd가 실제 JVM PID를 추적하여
+# Restart/시그널 전달이 올바르게 동작한다.
+ExecStart=/bin/bash -c 'exec /usr/bin/java $JAVA_OPTS -jar /etc/todolist/app.jar'
+
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=90
+TimeoutStopSec=30
+
+# 경량 샌드박싱 (t2.micro에서 체감 오버헤드 없는 선에서만 적용).
+# 앱은 /etc/todolist 안의 jar/설정만 읽고 파일 저장은 S3로 하므로 /home, 나머지 시스템
+# 경로를 잠가도 부작용이 없다.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=todolist
+
+[Install]
+WantedBy=multi-user.target

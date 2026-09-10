@@ -1,0 +1,22 @@
+{
+  "_설명": [
+    "이 정책을 IAM Role에 붙이고 그 Role을 EC2 인스턴스에 연결한다(콘솔: EC2 > 인스턴스 > 작업 >",
+    "보안 > IAM 역할 수정). 이 저장소의 어떤 스크립트도 Role 생성/연결을 자동화하지 않는다.",
+    "버킷명이 todolist.env의 AWS_S3_BUCKET과 다르면 아래 Resource 값을 맞춰 수정한다.",
+    "S3FileStorage.java가 실제로 호출하는 액션(PutObject/GetObject/DeleteObject)만 허용하며,",
+    "버킷 단위 조회(ListBucket 등)는 코드가 쓰지 않으므로 포함하지 않았다(최소권한 원칙)."
+  ],
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TodolistAppObjectAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::todolist-dev-tx7676/*"
+    }
+  ]
+}

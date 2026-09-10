@@ -13,7 +13,8 @@ import org.springframework.mock.web.MockHttpServletResponse;
  */
 class AccessTokenCookieWriterTest {
 
-    private final AccessTokenCookieWriter accessTokenCookieWriter = new AccessTokenCookieWriter();
+    private final AccessTokenCookieWriter accessTokenCookieWriter =
+            new AccessTokenCookieWriter(false, "Lax");
 
     @Test
     void attachSetsHttpOnlyCookieWithTokenAndOneDayMaxAge() {
